@@ -427,15 +427,18 @@ public final class SetupPages {
     private static void setPageTheme(final Layout layout, final Page page) throws SystemException {
 
         Theme theme = page.getTheme();
+        LOG.info("setting theme on page: " + page.getName() + " : " + theme.getName());
         if (theme != null) {
             layout.setThemeId(theme.getName());
             try {
+                LayoutLocalServiceUtil.updateLookAndFeel(layout.getGroupId(),layout.isPrivateLayout(),layout.getLayoutId(),
+                                                         theme.getName(),"01",null);
                 LayoutLocalServiceUtil.updateLayout(layout.getGroupId(), layout.isPrivateLayout(),
                         layout.getLayoutId(), layout.getTypeSettings());
             } catch (PortalException e) {
                 e.printStackTrace();
             }
-            LOG.info("setting theme on page: " + page.getName() + " : " + theme.getName());
+
         }
     }
 
