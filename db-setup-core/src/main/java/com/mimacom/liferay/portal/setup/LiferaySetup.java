@@ -12,10 +12,10 @@ package com.mimacom.liferay.portal.setup;
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -44,19 +44,8 @@ import com.liferay.portal.kernel.util.PortalUtil;
 import com.liferay.registry.RegistryUtil;
 import com.liferay.registry.dependency.ServiceDependencyListener;
 import com.liferay.registry.dependency.ServiceDependencyManager;
-import com.mimacom.liferay.portal.setup.core.SetupCustomFields;
-import com.mimacom.liferay.portal.setup.core.SetupOrganizations;
-import com.mimacom.liferay.portal.setup.core.SetupPages;
-import com.mimacom.liferay.portal.setup.core.SetupPermissions;
-import com.mimacom.liferay.portal.setup.core.SetupRoles;
-import com.mimacom.liferay.portal.setup.core.SetupSites;
-import com.mimacom.liferay.portal.setup.core.SetupUserGroups;
-import com.mimacom.liferay.portal.setup.core.SetupUsers;
-import com.mimacom.liferay.portal.setup.domain.Configuration;
-import com.mimacom.liferay.portal.setup.domain.CustomFields;
-import com.mimacom.liferay.portal.setup.domain.ObjectsToBeDeleted;
-import com.mimacom.liferay.portal.setup.domain.Organization;
-import com.mimacom.liferay.portal.setup.domain.Setup;
+import com.mimacom.liferay.portal.setup.core.*;
+import com.mimacom.liferay.portal.setup.domain.*;
 import org.xml.sax.SAXException;
 
 import javax.xml.bind.JAXBException;
@@ -95,10 +84,12 @@ public final class LiferaySetup {
 
     public static void setupFiles(final List<File> files) throws FileNotFoundException, ParserConfigurationException, SAXException, JAXBException {
 
+        List<Setup> setups = new ArrayList<>();
         for (File file : files) {
             Setup setup = MarshallUtil.unmarshall(file);
-            setup(setup);
+            setups.add(setup);
         }
+        setup(setups);
     }
 
     public static void setup(final File file) throws FileNotFoundException, ParserConfigurationException, SAXException, JAXBException {
@@ -108,18 +99,20 @@ public final class LiferaySetup {
 
     public static void setupInputStreams(final List<InputStream> inputStreams) throws ParserConfigurationException, SAXException, JAXBException {
 
+        List<Setup> setups = new ArrayList<>();
         for (InputStream inputStream : inputStreams) {
             Setup setup = MarshallUtil.unmarshall(inputStream);
-            setup(setup);
+            setups.add(setup);
         }
+        setup(setups);
     }
 
-    public static void setup(final InputStream inputStream) throws FileNotFoundException, ParserConfigurationException, SAXException, JAXBException {
+    public static void setup(final InputStream inputStream) throws ParserConfigurationException, SAXException, JAXBException {
 
         setupInputStreams(Arrays.asList(inputStream));
     }
 
-    public static void setup(final Setup setup) {
+    public static void setup(final List<Setup> setups) {
 
         new Thread(() -> {
             if (delayMillisecond > 0) {
@@ -137,7 +130,7 @@ public final class LiferaySetup {
                     @Override
                     public void dependenciesFulfilled() {
 
-                        preSetup(setup);
+                        preSetup(setups);
                     }
 
                     @Override
@@ -148,36 +141,37 @@ public final class LiferaySetup {
                 dependeciesFilters.stream().map(dependency -> RegistryUtil.getRegistry().getFilter(dependency))
                                   .forEach(serviceDependencyManager::registerDependencies);
             } else {
-                preSetup(setup);
+                preSetup(setups);
             }
         }).start();
     }
 
-    private static void preSetup(final Setup setup) {
+    private static void preSetup(final List<Setup> setups) {
 
-        try {
-            Configuration configuration = setup.getConfiguration();
+        for (Setup setup : setups) {
+            try {
+                Configuration configuration = setup.getConfiguration();
 
-            String runAsUser = configuration.getRunasuser();
-            if (runAsUser == null || runAsUser.isEmpty()) {
-                setAdminPermissionCheckerForThread(PortalUtil.getDefaultCompanyId());
-                LOG.info("Using default administrator.");
-            } else {
-                User user = UserLocalServiceUtil.getUserByEmailAddress(PortalUtil.getDefaultCompanyId(), runAsUser);
-                runAsUserId = user.getUserId();
-                PrincipalThreadLocal.setName(runAsUserId);
-                PermissionChecker permissionChecker = PermissionCheckerFactoryUtil.create(user);
-                PermissionThreadLocal.setPermissionChecker(permissionChecker);
+                String runAsUser = configuration.getRunasuser();
+                if (runAsUser == null || runAsUser.isEmpty()) {
+                    setAdminPermissionCheckerForThread(PortalUtil.getDefaultCompanyId());
+                    LOG.info("Using default administrator.");
+                } else {
+                    User user = UserLocalServiceUtil.getUserByEmailAddress(PortalUtil.getDefaultCompanyId(), runAsUser);
+                    runAsUserId = user.getUserId();
+                    PrincipalThreadLocal.setName(runAsUserId);
+                    PermissionChecker permissionChecker = PermissionCheckerFactoryUtil.create(user);
+                    PermissionThreadLocal.setPermissionChecker(permissionChecker);
 
-                LOG.info("Execute setup module as user " + setup.getConfiguration().getRunasuser());
+                    LOG.info("Execute setup module as user " + setup.getConfiguration().getRunasuser());
+                }
+                setupPortal(setup);
+            } catch (Exception e) {
+                LOG.error("An error occured while executing the portal setup ", e);
+            } finally {
+                PrincipalThreadLocal.setName(null);
+                PermissionThreadLocal.setPermissionChecker(null);
             }
-
-            setupPortal(setup);
-        } catch (Exception e) {
-            LOG.error("An error occured while executing the portal setup ", e);
-        } finally {
-            PrincipalThreadLocal.setName(null);
-            PermissionThreadLocal.setPermissionChecker(null);
         }
     }
 
@@ -275,9 +269,7 @@ public final class LiferaySetup {
      * Returns Liferay user, that has Administrator role assigned.
      *
      * @param companyId company ID
-     *
      * @return Liferay {@link com.mimacom.liferay.portal.setup.domain.User} instance, if no user is found, returns null
-     *
      * @throws Exception if cannot obtain permission checker
      */
     private static User getAdminUser(final long companyId) throws Exception {
@@ -299,7 +291,6 @@ public final class LiferaySetup {
      * Initializes permission checker for Liferay Admin. Used to grant access to custom fields.
      *
      * @param companyId company ID
-     *
      * @throws Exception if cannot set permission checker
      */
     private static void setAdminPermissionCheckerForThread(final long companyId) throws Exception {
