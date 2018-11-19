@@ -65,6 +65,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public final class LiferaySetup {
@@ -92,16 +93,30 @@ public final class LiferaySetup {
         delayMillisecond = millis;
     }
 
+    public static void setupFiles(final List<File> files) throws FileNotFoundException, ParserConfigurationException, SAXException, JAXBException {
+
+        for (File file : files) {
+            Setup setup = MarshallUtil.unmarshall(file);
+            setup(setup);
+        }
+    }
+
     public static void setup(final File file) throws FileNotFoundException, ParserConfigurationException, SAXException, JAXBException {
 
-        Setup setup = MarshallUtil.unmarshall(file);
-        setup(setup);
+        setupFiles(Arrays.asList(file));
+    }
+
+    public static void setupInputStreams(final List<InputStream> inputStreams) throws ParserConfigurationException, SAXException, JAXBException {
+
+        for (InputStream inputStream : inputStreams) {
+            Setup setup = MarshallUtil.unmarshall(inputStream);
+            setup(setup);
+        }
     }
 
     public static void setup(final InputStream inputStream) throws FileNotFoundException, ParserConfigurationException, SAXException, JAXBException {
 
-        Setup setup = MarshallUtil.unmarshall(inputStream);
-        setup(setup);
+        setupInputStreams(Arrays.asList(inputStream));
     }
 
     public static void setup(final Setup setup) {
